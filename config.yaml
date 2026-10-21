@@ -1,0 +1,66 @@
+model_list:
+  - model_name: memory-embed
+    litellm_params:
+      model: ollama/nomic-embed-text:v1.5
+      api_base: http://host.docker.internal:11434
+      api_key: ollama
+  - model_name: qwen-coder
+    litellm_params:
+      model: ollama_chat/Qwen3.5:latest
+      api_base: http://host.docker.internal:11434
+      api_key: ollama
+      extra_body:
+        think: false
+    model_info:
+      max_input_tokens: 262144
+  - model_name: graphiti-extract
+    litellm_params:
+      model: ollama_chat/Qwen3.5:latest
+      api_base: http://host.docker.internal:11434
+      api_key: ollama
+      extra_body:
+        think: false
+    model_info:
+      max_input_tokens: 262144
+  - model_name: ornith-reasoner
+    litellm_params:
+      model: ollama_chat/ornith-1.5:9b
+      api_base: http://host.docker.internal:11434
+      api_key: ollama
+      num_ctx: 80000
+    model_info:
+      max_input_tokens: 262144
+  - model_name: engineering-auto
+    litellm_params:
+      model: auto_router/complexity_router
+      complexity_router_config:
+        context_compaction: false
+        tiers:
+          SIMPLE: qwen-coder
+          MEDIUM: qwen-coder
+          COMPLEX: qwen-coder
+          REASONING: ornith-reasoner
+        classifier_type: jev
+        jev_classifier_config:
+          model: tev1:0.8b
+          api_base: http://host.docker.internal:11434
+          api_key: ollama
+          timeout_ms: 15000
+          circuit_breaker_enabled: true
+          circuit_breaker_cooldown_seconds: 30
+        classifier_fallback: heuristic
+        classifier_context_window_size: 1
+        classifier_context_budget_chars: 1000
+        classification_mode: user_turn
+        session_affinity: false
+        session_affinity_ttl_seconds: 3600
+        custom_technical_keywords: [spring, maven, java, react, kafka, postgres, concurrency, deadlock]
+      complexity_router_default_model: qwen-coder
+litellm_settings:
+  num_retries: 1
+  request_timeout: 240
+  drop_params: true
+router_settings:
+  set_verbose: true
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

@@ -1,0 +1,43 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+# ============================================================
+# Local AI backend
+# Codex -> LiteLLM -> TEV router -> Qwen / DeepSeek
+# ============================================================
+
+model_provider = "litellm"
+
+# Must match your LiteLLM model_name alias
+model = "engineering-auto"
+
+[model_providers.litellm]
+name = "Local LiteLLM"
+base_url = "http://localhost:4000/v1"
+env_key = "LITELLM_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+request_max_retries = 2
+stream_max_retries = 2
+stream_idle_timeout_ms = 600000
+
+[mcp_servers.openai-docs]
+url = "https://developers.openai.com/mcp"
+
+[mcp_servers.gemini-search]
+url = "http://127.0.0.1:3000/mcp"
+startup_timeout_sec = 60
+tool_timeout_sec = 120
+
+[mcp_servers.graphiti-memory]
+url = "http://127.0.0.1:8000/mcp"
+startup_timeout_sec = 60
+tool_timeout_sec = 300
+
+[mcp_servers.graphiti-memory.tools.get_status]
+approval_mode = "approve"
+
+[tui]
+screen_reader_detection_done = true
+
+[features]
+multi_agent = false
