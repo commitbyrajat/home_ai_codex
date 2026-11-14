@@ -1,6 +1,7 @@
 import asyncio
 import os
 import logging
+import select
 from pathlib import Path
 import subprocess
 import time
@@ -16,6 +17,7 @@ logger = logging.getLogger("gemini-search")
 mcp = FastMCP("Gemini Search", instructions="Search the web using Google AI Mode and return grounded answers with sources.")
 READONLY = ToolAnnotations(readOnlyHint=True)
 _engine = None
+_desktop_processes = []
 
 
 def patch_google_optional_srtst() -> None:
@@ -102,8 +104,13 @@ async def get_engine() -> AIModeEngine:
     if _engine is None:
         async with _engine_lock:
             if _engine is None:
-                _engine = AIModeEngine()
-                await _engine.start(
+                if os.environ.get("HEADLESS", "1") == "0":
+                    await asyncio.to_thread(start_visible_desktop)
+                profile_dir = os.environ.get("GEMINI_SEARCH_USER_DATA_DIR")
+                if profile_dir:
+                    clear_stale_browser_locks(profile_dir)
+                engine = AIModeEngine()
+                await engine.start(
                     cdp_url=os.environ.get("CDP_URL"),
                     headless=os.environ.get("HEADLESS", "1") != "0",
                     channel=os.environ.get("BROWSER_CHANNEL", "chromium"),
@@ -112,6 +119,8 @@ async def get_engine() -> AIModeEngine:
                     proxy_server=os.environ.get("GEMINI_SEARCH_PROXY_SERVER"),
                     chromedriver_path=os.environ.get("GEMINI_SEARCH_CHROMEDRIVER") or os.environ.get("UC_CHROMEDRIVER"),
                 )
+                # A failed start must leave the cache empty so the next call retries.
+                _engine = engine
     return _engine
 
 
@@ -133,15 +142,55 @@ async def ask(prompt: str) -> str:
 
 
 def start_visible_desktop():
-    os.environ.setdefault("DISPLAY", ":99")
+    """Start Xvfb and wait for its readiness signal before launching clients."""
+    global _desktop_processes
+    if _desktop_processes and all(proc.poll() is None for proc in _desktop_processes):
+        return
+    for proc in reversed(_desktop_processes):
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+    _desktop_processes = []
+
+    # Xvfb chooses a free display, avoiding stale :99 locks after a restart.
+    # -displayfd writes the display number only when the X server is ready.
+    read_fd, write_fd = os.pipe()
+    try:
+        xvfb = subprocess.Popen(
+            ["Xvfb", "-displayfd", str(write_fd), "-screen", "0", "1280x900x24", "-nolisten", "tcp"],
+            pass_fds=(write_fd,), stdout=subprocess.DEVNULL,
+        )
+        _desktop_processes.append(xvfb)
+    finally:
+        os.close(write_fd)
+    try:
+        ready, _, _ = select.select([read_fd], [], [], 20)
+        display = os.read(read_fd, 64).decode().strip() if ready else ""
+        if not display.isdigit() or xvfb.poll() is not None:
+            raise RuntimeError("Xvfb did not become ready; inspect container logs for X server errors")
+        os.environ["DISPLAY"] = f":{display}"
+    except Exception:
+        if xvfb.poll() is None:
+            xvfb.terminate()
+            xvfb.wait(timeout=5)
+        raise
+    finally:
+        os.close(read_fd)
+
     processes = [
-        ["Xvfb", ":99", "-screen", "0", "1280x900x24", "-nolisten", "tcp"],
-        ["x11vnc", "-display", ":99", "-forever", "-shared", "-nopw", "-rfbport", "5900", "-localhost"],
-        ["/usr/share/novnc/utils/novnc_proxy", "--listen", "6080", "--vnc", "localhost:5900", "--web", "/usr/share/novnc"],
+        ["x11vnc", "-display", os.environ["DISPLAY"], "-forever", "-shared", "-nopw", "-rfbport", "5900", "-localhost"],
+        ["websockify", "--web", "/usr/share/novnc", "6080", "localhost:5900"],
     ]
     for command in processes:
-        subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.Popen(command, stdout=subprocess.DEVNULL)
+        _desktop_processes.append(proc)
         time.sleep(0.25)
+        if proc.poll() is not None:
+            raise RuntimeError(f"Desktop service {command[0]} exited with code {proc.returncode}; inspect container logs")
 
 
 if __name__ == "__main__":

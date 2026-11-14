@@ -122,3 +122,17 @@ Confirm that the log reports both `tier=REASONING` and `routed_model=deepseek-re
 ```bash
 docker compose logs --since=2m litellm | grep -F 'ComplexityRouter: routing decision'
 ```
+
+## Gemini Search browser startup
+
+Run the engine startup regression tests against the running container:
+
+```bash
+docker compose exec -T gemini-search python - < gemini-search/test_http_server.py
+```
+
+The tests cover retrying after a failed browser start and sharing one engine
+across concurrent requests. Visible mode waits for Xvfb's readiness signal and
+chooses a free display. Desktop process errors appear in
+`docker compose logs gemini-search`. A failed first browser start is retried on
+the next tool call.

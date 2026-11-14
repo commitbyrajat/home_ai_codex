@@ -56,6 +56,13 @@ model_list:
         session_affinity_ttl_seconds: 3600
         custom_technical_keywords: [spring, maven, java, react, kafka, postgres, concurrency, deadlock]
       complexity_router_default_model: qwen-coder
+guardrails:
+  - guardrail_name: headroom-compression
+    litellm_params:
+      guardrail: headroom
+      mode: pre_call
+      api_base: http://headroom:8787
+      default_on: true
 litellm_settings:
   num_retries: 1
   request_timeout: 240

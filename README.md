@@ -1,5 +1,64 @@
 # LiteLLM + TEV on Ollama
 
+## LiteLLM Ollama tool-call compatibility
+
+Compose builds `litellm-ollama-tools:1.106.1` from the pinned upstream LiteLLM
+image. A checked source patch preserves Ollama's streamed tool-call indices and
+IDs so separate calls are not concatenated into invalid JSON on a later
+Responses API continuation. The build fails if the upstream version or expected
+source changes; review or remove the patch when upgrading LiteLLM.
+
+```bash
+docker compose up -d --build --no-deps litellm
+docker compose exec -T litellm /app/.venv/bin/python - < litellm/test_ollama_streaming.py
+docker compose exec -T litellm /app/.venv/bin/python - < litellm/smoke_tool_roundtrip.py
+```
+
+Start a new client conversation after deploying this fix if its history already
+contains concatenated tool arguments. The patch prevents future corruption; it
+does not rewrite client history or guess how to repair malformed JSON.
+
+## Headroom compression
+
+LiteLLM calls Headroom at `http://headroom:8787` before model requests using the
+default-on `headroom-compression` guardrail. Headroom is internal to the Compose
+network, and LiteLLM waits for its readiness check before starting.
+
+The Headroom service sets `OPENSSL_armcap=0` to avoid an illegal-instruction
+crash (exit code 132) in cryptography/OpenSSL on Apple Silicon Docker VMs.
+This disables OpenSSL's ARM hardware acceleration in that container.
+
+```bash
+docker compose up -d --wait headroom litellm
+```
+
+## Local skills MCP server
+
+The Poetry-managed `skills-mcp` service uses FastMCP 4 to expose skills from
+`~/.skills` over HTTP at `http://127.0.0.1:8001/mcp`.
+It provides `list_skills` (ids and relative paths for recursive `SKILL.md` files)
+and `get_skill(skill_id)` (the full instructions for a listed id).
+Files are read on each request, so edits appear without restarting the service.
+
+```bash
+mkdir -p ~/.skills
+docker compose up -d --build skills-mcp
+```
+
+The directory is mounted read-only. Skill files must be readable by the
+container's non-root user; symlinks outside the mounted directory are excluded.
+Other Compose services can connect to `http://skills-mcp:8001/mcp`.
+
+For local development:
+
+```bash
+cd skills-mcp
+poetry install
+poetry run skills-mcp
+```
+
+Set `SKILLS_DIR` to override `~/.skills` when running locally.
+
 ## Requirements
 - Docker Compose on macOS
 - Ollama 0.35+ running on the Mac host
