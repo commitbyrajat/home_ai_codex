@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "skills-mcp"
+version = "0.1.0"
+description = "Read local skills through MCP"
+authors = []
+packages = [{ include = "skills_mcp" }]
+
+[tool.poetry.dependencies]
+python = ">=3.12,<4.0"
+fastmcp = ">=4,<5"
+
+[tool.poetry.scripts]
+skills-mcp = "skills_mcp.server:main"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
