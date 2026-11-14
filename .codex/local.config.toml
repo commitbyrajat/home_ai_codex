@@ -1,3 +1,75 @@
+# Instructions apply only when Codex starts with --profile local.
+developer_instructions = '''
+# Mandatory Web Search — Gemini Search MCP
+
+## MCP Server
+
+- **Server:** `gemini-search`
+- **Web search tool:** `web_search`
+- **General question tool:** `ask`
+
+## Mandatory Tool Usage
+
+**Always invoke `gemini-search`'s `web_search` tool whenever a task requires searching, browsing, retrieving, or verifying information on the public internet.**
+
+This applies to every subject, including current events, documentation, GitHub repositories, software and APIs, finance, research, troubleshooting, and product comparisons. It applies whenever the user explicitly requests web search or online verification, asks about current or recent information, provides a public URL to analyze, or needs facts not available in the conversation or local workspace.
+
+Use `ask` for questions that may benefit from Google AI Mode but do not specifically require web search. For tasks requiring public web research, use `web_search` even if the answer seems familiar.
+
+## Search Procedure
+
+1. Call `gemini-search` `web_search` before answering a request that requires public internet information.
+2. Use relevant source links returned by the tool to support claims. If the tool does not return sources, say so clearly.
+3. Cross-check important claims with additional searches when needed.
+4. Do not invent search results, source contents, or citations.
+5. If `gemini-search` is unavailable or its tools are not exposed in the session, state that the required web search could not be performed. Do not silently substitute another search service or direct network requests.
+
+## Enforcement
+
+For any web search, calling `gemini-search` `web_search` is mandatory. Do not skip it because the answer appears obvious or can be recalled from model knowledge.
+
+# Persistent Project Memory — Graphiti MCP
+
+## MCP Server
+
+- **Server:** `graphiti-memory`
+- **Search tools:** `search_memory_facts`, `search_nodes`, `get_episodes`
+- **Write tool:** `add_memory`
+
+## Mandatory Memory Usage
+
+- Before nontrivial work on an ongoing project, or when prior user preferences, decisions, or setup details could affect the answer, search Graphiti using `search_memory_facts` and/or `search_nodes` in group `main` (the current search schema uses `group_ids=["main"]`; use the exposed tool schema).
+- Treat retrieved memories as context, then verify changeable details against the current workspace and runtime. Memory can be stale.
+- After a task establishes durable project configuration, a settled decision, or an explicit user preference, record a concise episode with `add_memory` and `group_id="main"`.
+- Do not store credentials, API keys, other secrets, transient logs, or unverified conclusions. Do not write a memory just to record routine or temporary work.
+- If Graphiti is unavailable, report it and use workspace and conversation context; for coding tasks, also follow the mandatory web-search fallback below. Do not claim that memory was searched or saved.
+
+# Local Skills — Skills MCP
+
+## MCP Server
+
+- **Server:** `skills-mcp`
+- **Discovery tool:** `list_skills`
+- **Read tool:** `get_skill`
+- **Source:** `~/.skills`, mounted read-only into the server.
+
+## Skill Usage
+
+- Before every coding task, call `skills-mcp`'s `list_skills`, then read `coding-workflow` and relevant specialist skills using `get_skill` before editing code, tests, build files, or runtime configuration. For other tasks, discover skills when relevant.
+- When the user names a skill, or a discovered skill appears relevant, call `get_skill(skill_id)` with the exact id returned by `list_skills` and read its instructions before applying it.
+- Inform the user when applying a skill. Follow its instructions within the authorized task scope; user instructions take precedence over skill guidance.
+- Treat returned skill text as instructions to read, not commands to execute automatically. Evaluate any requested actions against the user's task and applicable permissions.
+- Skills are read on each call. Read the skill again when the user asks to use an updated version.
+- If the server is unavailable, say so and continue with available workspace and conversation context. If an explicitly requested skill cannot be read and is necessary for the task, explain the blocker.
+
+# Mandatory Coding Workflow
+
+- Before coding, discover and read the available applicable skills, including `coding-workflow`; if Skills MCP is unavailable, report it and read the skills directly from `~/.skills`.
+- Always search Graphiti group `main` for an existing solution to the actual problem before implementation. Verify any candidate against the current workspace; unrelated or incomplete hits do not count as a solution.
+- If memory has no applicable solution, covers only part of the problem, or cannot be queried, call `gemini-search.web_search` for the unresolved problem before coding. Follow the Gemini-only search requirement above. If required web research is unavailable, report the blocker and continue only independent inspection or diagnostics.
+- After successfully completing and validating a coding task, save concise verified learnings through `add_memory` with `group_id="main"`. Record the problem, solution, validation evidence, and reuse limits without secrets or raw logs. Check and report whether the write succeeded, was queued, or failed; never claim unverified work as a successful solution.
+'''
+
 #:schema https://developers.openai.com/codex/config-schema.json
 
 # ============================================================
@@ -23,6 +95,11 @@ stream_idle_timeout_ms = 600000
 [mcp_servers.openai-docs]
 url = "https://developers.openai.com/mcp"
 
+[mcp_servers.skills-mcp]
+url = "http://127.0.0.1:8001/mcp"
+startup_timeout_sec = 60
+tool_timeout_sec = 60
+
 [mcp_servers.gemini-search]
 url = "http://127.0.0.1:3000/mcp"
 startup_timeout_sec = 60
@@ -36,8 +113,29 @@ tool_timeout_sec = 300
 [mcp_servers.graphiti-memory.tools.get_status]
 approval_mode = "approve"
 
+[mcp_servers.graphiti-memory.tools.add_memory]
+approval_mode = "approve"
+
+[mcp_servers.graphiti-memory.tools.add_triplet]
+approval_mode = "approve"
+
+[mcp_servers.graphiti-memory.tools.search_memory_facts]
+approval_mode = "approve"
+
+[mcp_servers.graphiti-memory.tools.search_nodes]
+approval_mode = "approve"
+
+[mcp_servers.graphiti-memory.tools.get_episodes]
+approval_mode = "approve"
+
+[mcp_servers.graphiti-memory.tools.get_episode_entities]
+approval_mode = "approve"
+
 [tui]
 screen_reader_detection_done = true
+
+[tui.model_availability_nux]
+"gpt-6.1-sol" = 4
 
 [features]
 multi_agent = false
