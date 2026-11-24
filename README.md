@@ -32,6 +32,72 @@ This disables OpenSSL's ARM hardware acceleration in that container.
 docker compose up -d --wait headroom litellm
 ```
 
+## BGE reranking for LightRAG
+
+The `memory-rerank` alias serves `qllama/bge-reranker-v2-m3:latest` through
+LiteLLM's `/v1/rerank` endpoint. The `reranker` Compose service uses the official
+prebuilt llama.cpp server image, pinned by digest, and mounts the GGUF already
+downloaded by Ollama read-only. No image build or additional model download is
+needed. Ollama continues serving chat and embeddings; llama.cpp serves reranking
+on the internal Compose network using CPU inference.
+
+LiteLLM uses the `cohere/` provider for the local server's compatible API format.
+All reranking requests stay local, and both services authenticate with
+`LITELLM_MASTER_KEY`. LiteLLM waits for the reranker's health check at startup.
+
+The default model file matches Ollama manifest `06e0e64a6f61`. For a different
+Ollama model directory or updated model layer, set `BGE_RERANK_MODEL_PATH` in
+`.env` to the absolute GGUF/blob path. `ollama show --modelfile
+qllama/bge-reranker-v2-m3:latest` shows the model's `FROM` path. The bind mount
+fails if the file does not exist. The configured query/document pair limit is
+4096 model tokens; split longer documents before reranking.
+
+Start the server and apply the proxy configuration without building images:
+
+```bash
+docker compose up -d --no-build --wait reranker litellm
+docker compose restart litellm
+```
+
+Test the same request format LightRAG uses:
+
+```bash
+set -a; source .env; set +a
+curl --fail-with-body -sS http://localhost:4000/v1/rerank \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "memory-rerank",
+    "query": "What is the capital of France?",
+    "documents": ["Bananas are yellow.", "Paris is the capital of France."],
+    "top_n": 1
+  }'
+```
+
+The response's `results` array contains original document indices and
+`relevance_score` values, sorted by relevance. No chat prompt or response parsing
+adapter is required. This BGE GGUF returns raw relevance logits, which can be
+negative or greater than 1. Keep LightRAG's `MIN_RERANK_SCORE=0.0` to disable
+threshold filtering; probability-based thresholds do not apply to these scores.
+
+For a LightRAG container attached to this stack's Compose network, configure:
+
+```dotenv
+RERANK_BINDING=cohere
+RERANK_MODEL=memory-rerank
+RERANK_BINDING_HOST=http://litellm:4000/v1/rerank
+RERANK_BINDING_API_KEY=<same value as LITELLM_MASTER_KEY>
+RERANK_TIMEOUT=120
+MAX_ASYNC_RERANK=1
+MIN_RERANK_SCORE=0.0
+```
+
+Join the LightRAG container to this stack's network in its Compose configuration
+(the default name is `litellm-tev-stack_default`). The `litellm` hostname is only
+available on that network. These settings belong in LightRAG's environment;
+restart/recreate its container after applying them. This does not automatically
+change Graphiti's search behavior.
+
 ## Local skills MCP server
 
 The Poetry-managed `skills-mcp` service uses FastMCP 4 to expose skills from

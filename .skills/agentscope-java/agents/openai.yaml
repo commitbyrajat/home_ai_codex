@@ -1,0 +1,4 @@
+interface:
+  display_name: "AgentScope Java"
+  short_description: "Build Java agents using LiteLLM engineering-auto"
+  default_prompt: "Use $agentscope-java to create a Java ReActAgent using the local LiteLLM endpoint, engineering-auto model, and API key from the stack .env, with a custom tool and offline tests."

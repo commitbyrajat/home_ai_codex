@@ -7,7 +7,7 @@ services:
       - "127.0.0.1:8001:8001"
     volumes:
       - type: bind
-        source: ${HOME}/.skills
+        source: ./.skills
         target: /skills
         read_only: true
         bind:
@@ -34,6 +34,49 @@ services:
       retries: 5
       start_period: 60s
 
+  reranker:
+    # Official prebuilt multi-platform server; no image build or model download.
+    image: ghcr.io/ggml-org/llama.cpp:server@sha256:5b43086e3ba7ea5794d72904654f6cd41224a9b1c6ac0398f4940ee380d30f23
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      LLAMA_API_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY must be set in .env}
+    volumes:
+      - type: bind
+        # Model layer from qllama/bge-reranker-v2-m3:latest (06e0e64a6f61).
+        source: ${BGE_RERANK_MODEL_PATH:-${HOME}/.ollama/models/blobs/sha256-4bf51534d8d1aebced4de6eca4a8a39bd207170b42e3dcffa7718d194771a713}
+        target: /models/bge-reranker-v2-m3.gguf
+        read_only: true
+        bind:
+          create_host_path: false
+    command:
+      - --model
+      - /models/bge-reranker-v2-m3.gguf
+      - --alias
+      - qllama/bge-reranker-v2-m3:latest
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --reranking
+      - --ctx-size
+      - "4096"
+      - --batch-size
+      - "4096"
+      - --ubatch-size
+      - "4096"
+      - --parallel
+      - "1"
+      - --threads
+      - "4"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
   litellm:
     image: litellm-ollama-tools:1.106.1
     build:
@@ -42,6 +85,8 @@ services:
     restart: unless-stopped
     depends_on:
       headroom:
+        condition: service_healthy
+      reranker:
         condition: service_healthy
     ports:
       - "127.0.0.1:4000:4000"

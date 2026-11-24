@@ -4,24 +4,43 @@ model_list:
       model: ollama/nomic-embed-text:v1.5
       api_base: http://host.docker.internal:11434
       api_key: ollama
+  # Cohere-compatible API served locally by llama.cpp using the Ollama GGUF.
+  - model_name: memory-rerank
+    litellm_params:
+      model: cohere/qllama/bge-reranker-v2-m3:latest
+      # Explicit v1 path prevents LiteLLM from selecting Cohere's v2 endpoint.
+      api_base: http://reranker:8080/v1/rerank
+      api_key: os.environ/LITELLM_MASTER_KEY
+    model_info:
+      mode: rerank
+      max_input_tokens: 4096
   - model_name: qwen-coder
     litellm_params:
-      model: ollama_chat/Qwen3.5:latest
+      model: ollama_chat/SparkLLM/Spark-X2.6-4B:latest
       api_base: http://host.docker.internal:11434
       api_key: ollama
+      # Allocate the runtime context; model_info alone does not configure Ollama.
+      num_ctx: 98304
+      max_tokens: 16384
       extra_body:
         think: false
     model_info:
-      max_input_tokens: 262144
+      max_tokens: 98304
+      max_input_tokens: 81920
+      max_output_tokens: 16384
   - model_name: graphiti-extract
     litellm_params:
-      model: ollama_chat/Qwen3.5:latest
+      model: ollama_chat/SparkLLM/Spark-X2.6-4B:latest
       api_base: http://host.docker.internal:11434
       api_key: ollama
+      num_ctx: 98304
+      max_tokens: 16384
       extra_body:
         think: false
     model_info:
-      max_input_tokens: 262144
+      max_tokens: 98304
+      max_input_tokens: 81920
+      max_output_tokens: 16384
   - model_name: ornith-reasoner
     litellm_params:
       model: ollama_chat/ornith-1.5:9b
@@ -65,7 +84,7 @@ guardrails:
       default_on: true
 litellm_settings:
   num_retries: 1
-  request_timeout: 240
+  request_timeout: 900
   drop_params: true
 router_settings:
   set_verbose: true
